@@ -1,0 +1,11 @@
+langgraph
+langgraph-checkpoint-sqlite
+langchain-google-genai
+langchain-core
+pydantic
+python-dotenv
+supabase
+rich
+sentence-transformers
+qwen-tts
+soundfile

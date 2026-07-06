@@ -1,0 +1,66 @@
+{
+  "run_id": "287b9cb1-62b4-4b78-beb5-2c2fde1ac5ee",
+  "idea": "What if humans tasted food with their hands?",
+  "selection_reason": "This idea is incredibly simple, visceral, and universally understood by any human of any age. It instantly triggers funny and relatable daily scenarios—like the horror of shaking hands, petting a dog, or accidentally touching garbage—making it perfect for a highly engaging, fast-paced video.",
+  "script": {
+    "dialogs": [
+      {
+        "line_number": 1,
+        "dialog_type": "hook",
+        "text": "What if your hands had tastebuds—and touching food was how you tasted it?",
+        "flux_prompt": "Pixar feature animation style, Disney 3D render, hyper-expressive characters, cinematic studio lighting, vibrant saturated color palette, soft volumetric rim light, shallow depth of field, 8K render quality, no text, no watermark, character-focused composition, exaggerated expressive faces, warm cinematic color grade, photorealistic textures on stylized geometry — a young man looking in absolute shock and awe at his own fingertips, which have tiny, cute, stylized glowing tastebuds on them"
+      },
+      {
+        "line_number": 2,
+        "dialog_type": "hook",
+        "text": "Eating a burger would mean plunging your bare hands right into the greasy, delicious cheese.",
+        "flux_prompt": "Pixar feature animation style, Disney 3D render, hyper-expressive characters, cinematic studio lighting, vibrant saturated color palette, soft volumetric rim light, shallow depth of field, 8K render quality, no text, no watermark, character-focused composition, exaggerated expressive faces, warm cinematic color grade, photorealistic textures on stylized geometry — a messy, happy kid squeezing a giant, juicy, dripping cheeseburger with both hands, bright yellow melted cheese oozing through his fingers, looking ecstatic"
+      },
+      {
+        "line_number": 3,
+        "dialog_type": "body",
+        "text": "High-fives would become extremely intimate—and potentially taste like whatever they had for lunch.",
+        "flux_prompt": "Pixar feature animation style, Disney 3D render, hyper-expressive characters, cinematic studio lighting, vibrant saturated color palette, soft volumetric rim light, shallow depth of field, 8K render quality, no text, no watermark, character-focused composition, exaggerated expressive faces, warm cinematic color grade, photorealistic textures on stylized geometry — two teenagers high-fiving in a school hallway, one looking disgusted and sticking their tongue out, a small cartoon pizza slice icon floating between their touching palms"
+      },
+      {
+        "line_number": 4,
+        "dialog_type": "body",
+        "text": "Handshakes? Completely banned. No one wants to taste a stranger's sweaty subway commute.",
+        "flux_prompt": "Pixar feature animation style, Disney 3D render, hyper-expressive characters, cinematic studio lighting, vibrant saturated color palette, soft volumetric rim light, shallow depth of field, 8K render quality, no text, no watermark, character-focused composition, exaggerated expressive faces, warm cinematic color grade, photorealistic textures on stylized geometry — a stylish businessman recoiling in absolute horror, hiding his hands behind his back, while another man awkwardly extends a hand to shake"
+      },
+      {
+        "line_number": 5,
+        "dialog_type": "body",
+        "text": "Grocery shopping would be a sensory overload—just touching an onion could make you cry.",
+        "flux_prompt": "Pixar feature animation style, Disney 3D render, hyper-expressive characters, cinematic studio lighting, vibrant saturated color palette, soft volumetric rim light, shallow depth of field, 8K render quality, no text, no watermark, character-focused composition, exaggerated expressive faces, warm cinematic color grade, photorealistic textures on stylized geometry — a woman in a bright supermarket aisle holding a single raw onion, tears streaming down her face in a funny, dramatic way, looking overwhelmed"
+      },
+      {
+        "line_number": 6,
+        "dialog_type": "body",
+        "text": "Chefs would become hand-care models, wearing designer silk gloves to protect their delicate, culinary fingertips.",
+        "flux_prompt": "Pixar feature animation style, Disney 3D render, hyper-expressive characters, cinematic studio lighting, vibrant saturated color palette, soft volumetric rim light, shallow depth of field, 8K render quality, no text, no watermark, character-focused composition, exaggerated expressive faces, warm cinematic color grade, photorealistic textures on stylized geometry — a professional chef in a clean white uniform proudly wearing sparkling, elegant white silk gloves, posing like a model under a bright kitchen spotlight"
+      },
+      {
+        "line_number": 7,
+        "dialog_type": "body",
+        "text": "And soap companies would start selling \"bacon-flavored\" handwash just to get you through the day.",
+        "flux_prompt": "Pixar feature animation style, Disney 3D render, hyper-expressive characters, cinematic studio lighting, vibrant saturated color palette, soft volumetric rim light, shallow depth of field, 8K render quality, no text, no watermark, character-focused composition, exaggerated expressive faces, warm cinematic color grade, photorealistic textures on stylized geometry — a happy boy washing his hands in a bathroom sink, the fluffy soap bubbles shaped like tiny cartoon bacon strips, smiling with a blissful expression"
+      },
+      {
+        "line_number": 8,
+        "dialog_type": "closer",
+        "text": "But wait—how would we wash our hands if soap tasted like... soapy chemical dread?",
+        "flux_prompt": "Pixar feature animation style, Disney 3D render, hyper-expressive characters, cinematic studio lighting, vibrant saturated color palette, soft volumetric rim light, shallow depth of field, 8K render quality, no text, no watermark, character-focused composition, exaggerated expressive faces, warm cinematic color grade, photorealistic textures on stylized geometry — a man with a hilarious, extremely puckered face of pure disgust, staring down at his soapy, sudsy hands in a sink"
+      },
+      {
+        "line_number": 9,
+        "dialog_type": "closer",
+        "text": "Would you trade your tongue for delicious, super-powered fingertips? Drop a 🤔 if you're keeping your gloves on!",
+        "flux_prompt": "Pixar feature animation style, Disney 3D render, hyper-expressive characters, cinematic studio lighting, vibrant saturated color palette, soft volumetric rim light, shallow depth of field, 8K render quality, no text, no watermark, character-focused composition, exaggerated expressive faces, warm cinematic color grade, photorealistic textures on stylized geometry — a cute character wearing giant, fluffy, colorful winter mittens indoors, looking playfully suspicious and questioning at the viewer"
+      }
+    ],
+    "total_duration_estimate": 45
+  },
+  "audio_path": "/content/outputs/20260705_112830_What_if_humans_tasted_food_with_their_ha/audio.wav",
+  "generated_at": "2026-07-05T11:28:30.687009+00:00"
+}
