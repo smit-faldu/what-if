@@ -9,3 +9,4 @@ rich
 sentence-transformers
 qwen-tts
 soundfile
+openai-whisper

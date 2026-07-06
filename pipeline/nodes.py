@@ -22,6 +22,7 @@ from config import (
     GEMINI_API_KEY, GEMINI_MODEL, OUTPUT_DIR,
     TTS_ENABLED, TTS_MODEL, TTS_SPEAKER, TTS_LANGUAGE, TTS_INSTRUCT,
     FLUX_API_URL, FLUX_API_TOKEN, FLUX_ENABLED,
+    WHISPER_MODEL, WHISPER_ENABLED,
 )
 from pipeline.state import (
     WhatIfState,
@@ -389,17 +390,182 @@ def generate_images(state: WhatIfState) -> dict:
     return {"script": script}
 
 
+# ── Node 7: Generate Subtitles (Whisper) ─────────────────────────────────────
+
+def generate_subtitles(state: WhatIfState) -> dict:
+    """
+    Transcribe the merged TTS audio with OpenAI Whisper to produce
+    accurate, word-level timestamped subtitles.
+
+    Outputs (stored in state["subtitle_paths"]):
+    - subtitles.srt  : Standard SRT file — drag-and-drop into Premiere/DaVinci/CapCut.
+    - subtitles.json : Full Whisper segment/word data for programmatic use
+                       (e.g., auto-burn captions or sync with image frames).
+
+    Behaviour:
+    - Skipped if TTS was not run (no audio.wav available in state yet — audio
+      is written by save_output, so we transcribe from the in-memory TTS data).
+    - Falls back gracefully (warning + empty dict) if whisper is not installed.
+    - Uses the "base" model by default (fast, runs on CPU); override with
+      WHISPER_MODEL env var (tiny/base/small/medium/large/large-v3).
+    - Word timestamps are enabled — every word gets its own start/end time so
+      subtitles can be split at any granularity in post-production.
+
+    NOTE: Whisper works on the *in-memory* merged audio array that generate_tts
+    stored in state["script"]["_tts"], so this node must run BEFORE save_output
+    writes (and removes) that blob.  The srt/json files are saved by save_output.
+    """
+    import os
+
+    if not WHISPER_ENABLED:
+        print("\n⏭️  WHISPER_ENABLED=false — skipping subtitle generation.")
+        return {}
+
+    tts_data = state.get("script", {}).get("_tts")
+    if not tts_data:
+        print("\n⏭️  No TTS audio in state — skipping subtitle generation.")
+        return {}
+
+    try:
+        import whisper
+        import numpy as np
+    except ImportError as exc:
+        print(
+            f"\n⚠️  Whisper not installed ({exc}). "
+            "Run: pip install openai-whisper\n"
+            "Skipping subtitle generation."
+        )
+        return {}
+
+    whisper_model_name: str = WHISPER_MODEL
+    print(f"\n📝  Whisper: loading model '{whisper_model_name}' ...")
+    model = whisper.load_model(whisper_model_name)
+
+    # ── Reconstruct the merged numpy array from in-memory TTS data ───────────
+    merged_audio = np.array(tts_data["merged"], dtype=np.float32)
+    sample_rate: int = tts_data["sample_rate"]
+
+    # Whisper expects float32 mono audio at 16 kHz.
+    # Resample if the TTS model produced a different rate.
+    if sample_rate != 16_000:
+        try:
+            import librosa
+            merged_audio = librosa.resample(
+                merged_audio, orig_sr=sample_rate, target_sr=16_000
+            )
+        except ImportError:
+            # librosa not available — write a temp wav and let Whisper load it
+            import tempfile
+            import soundfile as sf
+            with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as tmp:
+                tmp_path = tmp.name
+            sf.write(tmp_path, merged_audio, sample_rate)
+            result = model.transcribe(
+                tmp_path,
+                language="en",
+                word_timestamps=True,
+                verbose=False,
+            )
+            import os as _os
+            _os.unlink(tmp_path)
+            return _build_subtitle_state(result, state)
+
+    print("   Transcribing audio with word-level timestamps ...")
+    result = model.transcribe(
+        merged_audio,
+        language="en",
+        word_timestamps=True,
+        verbose=False,
+    )
+
+    return _build_subtitle_state(result, state)
+
+
+def _build_subtitle_state(whisper_result: dict, state: WhatIfState) -> dict:
+    """
+    Convert a Whisper transcription result into structured subtitle data
+    and stash it in state["script"]["_subtitles"] for save_output to write.
+
+    Returns a state patch with the subtitle data embedded in the script dict.
+    """
+    segments = whisper_result.get("segments", [])
+
+    # ── Build SRT ─────────────────────────────────────────────────────────────
+    def _fmt_time(seconds: float) -> str:
+        """Format seconds → SRT timestamp  HH:MM:SS,mmm"""
+        h = int(seconds // 3600)
+        m = int((seconds % 3600) // 60)
+        s = int(seconds % 60)
+        ms = int(round((seconds - int(seconds)) * 1000))
+        return f"{h:02d}:{m:02d}:{s:02d},{ms:03d}"
+
+    srt_blocks: list[str] = []
+    json_segments: list[dict] = []
+
+    for i, seg in enumerate(segments, start=1):
+        start = _fmt_time(seg["start"])
+        end   = _fmt_time(seg["end"])
+        text  = seg["text"].strip()
+
+        srt_blocks.append(f"{i}\n{start} --> {end}\n{text}\n")
+
+        # Structured segment with optional word-level detail
+        seg_data: dict = {
+            "index":  i,
+            "start":  round(seg["start"], 3),
+            "end":    round(seg["end"],   3),
+            "text":   text,
+        }
+        if "words" in seg:
+            seg_data["words"] = [
+                {
+                    "word":  w.get("word", "").strip(),
+                    "start": round(w.get("start", seg["start"]), 3),
+                    "end":   round(w.get("end",   seg["end"]),   3),
+                }
+                for w in seg["words"]
+            ]
+        json_segments.append(seg_data)
+
+    srt_content = "\n".join(srt_blocks)
+    json_content = {
+        "full_text":   whisper_result.get("text", "").strip(),
+        "language":    whisper_result.get("language", "en"),
+        "segments":    json_segments,
+    }
+
+    total_words = sum(
+        len(seg.get("words", [])) for seg in json_segments
+    )
+    print(
+        f"   ✅ Whisper done — {len(segments)} segments, "
+        f"~{total_words} words with timestamps."
+    )
+
+    # Stash raw subtitle data in the script dict for save_output
+    script = dict(state["script"])
+    script["_subtitles"] = {
+        "srt":  srt_content,
+        "json": json_content,
+    }
+    return {"script": script}
+
+
+
+
 # ── Node 7: Save Output ───────────────────────────────────────────────────────
 
 def save_output(state: WhatIfState) -> dict:
     """
     1. Store the chosen idea in Supabase vector memory (for future deduplication).
     2. Write a timestamped output folder with:
-       - dialogs.md     : numbered dialog lines + image prompts (human-readable)
-       - tts_script.txt : expressive text (one line per dialog, symbols intact)
-       - line_XX.wav    : individual TTS clips (if TTS was run)
-       - audio.wav      : merged TTS audio (if TTS was run)
-       - data.json      : full structured output
+       - dialogs.md       : numbered dialog lines + image prompts (human-readable)
+       - tts_script.txt   : expressive text (one line per dialog, symbols intact)
+       - line_XX.wav      : individual TTS clips (if TTS was run)
+       - audio.wav        : merged TTS audio (if TTS was run)
+       - subtitles.srt    : Whisper-generated subtitles (drag into any video editor)
+       - subtitles.json   : Word-level timestamp data for programmatic post-processing
+       - data.json        : full structured output
     """
     idea: str = state["selected_idea"]
     script: dict = state["script"]
@@ -485,6 +651,34 @@ def save_output(state: WhatIfState) -> dict:
         # Remove raw image blob before saving data.json (binary, not JSON-safe)
         script = {k: v for k, v in script.items() if k != "_images"}
 
+    # ── 5c. Write subtitle files (if generate_subtitles ran successfully) ──────
+    subtitle_data  = script.get("_subtitles")
+    subtitle_paths: dict | None = None
+    if subtitle_data:
+        try:
+            import json as _json
+            srt_path  = folder / "subtitles.srt"
+            json_path = folder / "subtitles.json"
+
+            srt_path.write_text(subtitle_data["srt"],  encoding="utf-8")
+            json_path.write_text(
+                _json.dumps(subtitle_data["json"], indent=2, ensure_ascii=False),
+                encoding="utf-8",
+            )
+            subtitle_paths = {
+                "srt":  str(srt_path),
+                "json": str(json_path),
+            }
+            print(
+                f"\n📝 Subtitles saved →\n"
+                f"   SRT : {srt_path}\n"
+                f"   JSON: {json_path}"
+            )
+            # Remove subtitle blob before saving data.json
+            script = {k: v for k, v in script.items() if k != "_subtitles"}
+        except Exception as exc:
+            print(f"\n⚠️  Could not write subtitle files: {exc}")
+
     # ── 6. Write data.json (full structured output) ───────────────────────────
     data = {
         "run_id": run_id,
@@ -493,6 +687,7 @@ def save_output(state: WhatIfState) -> dict:
         "script": script,
         "audio_path": audio_path,
         "image_paths": saved_image_paths if saved_image_paths else None,
+        "subtitle_paths": subtitle_paths,
         "generated_at": datetime.now(timezone.utc).isoformat(),
     }
     (folder / "data.json").write_text(
@@ -503,4 +698,5 @@ def save_output(state: WhatIfState) -> dict:
         "output_path":    str(folder),
         "tts_audio_path": audio_path,
         "image_paths":    saved_image_paths if saved_image_paths else None,
+        "subtitle_paths": subtitle_paths,
     }

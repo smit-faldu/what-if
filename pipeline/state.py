@@ -115,4 +115,5 @@ class WhatIfState(TypedDict):
     output_path: Optional[str]           # path to the saved output folder
     tts_audio_path: Optional[str]        # path to the merged TTS audio (.wav)
     image_paths: Optional[list[str]]     # paths to generated images (one per dialog line)
+    subtitle_paths: Optional[dict]       # {"srt": str, "json": str} — Whisper subtitle files
 

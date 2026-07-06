@@ -72,3 +72,11 @@ TTS_INSTRUCT: str = os.getenv(
 FLUX_API_URL:   str  = os.getenv("FLUX_API_URL")
 FLUX_API_TOKEN: str  = os.environ["FLUX_API_TOKEN"]   # required — add to .env
 FLUX_ENABLED:   bool = os.getenv("FLUX_ENABLED",   "true").lower() == "true"
+
+# ── OpenAI Whisper (subtitle generation) ──────────────────────────────────────
+# Model sizes (accuracy ↑ / speed ↓): tiny < base < small < medium < large-v3
+# "base" is the default — fast on CPU, good enough for clean TTS audio.
+# Set WHISPER_MODEL=small or larger for more accurate transcription.
+# Set WHISPER_ENABLED=false to skip subtitle generation entirely.
+WHISPER_MODEL:   str  = os.getenv("WHISPER_MODEL",   "base")
+WHISPER_ENABLED: bool = os.getenv("WHISPER_ENABLED", "true").lower() == "true"

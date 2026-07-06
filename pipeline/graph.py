@@ -20,10 +20,13 @@ Topology (linear — each node feeds into the next):
   generate_tts         ← Qwen3-TTS converts each line to speech; merges into audio.wav (CUDA→CPU)
     │
     ▼
+  generate_subtitles   ← OpenAI Whisper transcribes audio; writes subtitles.srt + subtitles.json
+    │
+    ▼
   generate_images      ← Calls self-hosted Flux API; saves image_01.jpg … image_NN.jpg
     │
     ▼
-  save_output          ← Stores idea in Supabase; writes dialogs.md + tts_script.txt + audio.wav + images + data.json
+  save_output          ← Stores idea in Supabase; writes dialogs.md + tts_script.txt + audio.wav + subtitles + images + data.json
     │
     ▼
   END
@@ -41,6 +44,7 @@ from pipeline.nodes import (
     select_idea,
     generate_content,
     generate_tts,
+    generate_subtitles,
     generate_images,
     save_output,
 )
@@ -65,6 +69,7 @@ def build_graph():
     graph.add_node("select_idea", select_idea)
     graph.add_node("generate_content", generate_content)
     graph.add_node("generate_tts", generate_tts)
+    graph.add_node("generate_subtitles", generate_subtitles)
     graph.add_node("generate_images", generate_images)
     graph.add_node("save_output", save_output)
 
@@ -74,7 +79,8 @@ def build_graph():
     graph.add_edge("filter_ideas", "select_idea")
     graph.add_edge("select_idea", "generate_content")
     graph.add_edge("generate_content", "generate_tts")
-    graph.add_edge("generate_tts", "generate_images")
+    graph.add_edge("generate_tts", "generate_subtitles")
+    graph.add_edge("generate_subtitles", "generate_images")
     graph.add_edge("generate_images", "save_output")
     graph.add_edge("save_output", END)
 
