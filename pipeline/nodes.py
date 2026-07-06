@@ -11,6 +11,7 @@ Note: script writing and image prompt generation are merged into
 
 from __future__ import annotations
 import json
+import re
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -20,6 +21,7 @@ from langchain_core.messages import SystemMessage, HumanMessage
 from config import (
     GEMINI_API_KEY, GEMINI_MODEL, OUTPUT_DIR,
     TTS_ENABLED, TTS_MODEL, TTS_SPEAKER, TTS_LANGUAGE, TTS_INSTRUCT,
+    FLUX_API_URL, FLUX_API_TOKEN, FLUX_ENABLED,
 )
 from pipeline.state import (
     WhatIfState,
@@ -222,32 +224,78 @@ def generate_tts(state: WhatIfState) -> dict:
         attn_implementation="sdpa",
     )
 
+    # ── Text sanitizer ────────────────────────────────────────────────────────
+    # Qwen3-TTS treats punctuation and certain words as prosody/emotion cues.
+    # Strip everything that can trigger random laughing, gasping, or tone/pace
+    # drift so every line is spoken as plain, level, consistent narration.
+    _HESITATION_WORDS = (
+        r"\b(um+|uh+|erm+|heh+|huh+|hmm+|honestly\?|so-|but wait-)\b"
+    )
+
+    def sanitize_for_tts(raw: str) -> str:
+        t = raw
+        # Normalize all dash variants (em, en, hyphen-as-pause) to a comma
+        t = re.sub(r"\s*[—–]\s*", ", ", t)
+        # Ellipses -> single period
+        t = re.sub(r"\.{2,}|…", ".", t)
+        # Collapse stacked punctuation ("?!", "!!", "??") to a single mark
+        t = re.sub(r"[!?]{2,}", lambda m: m.group(0)[0], t)
+        # Drop hesitation/filler words entirely
+        t = re.sub(_HESITATION_WORDS, "", t, flags=re.IGNORECASE)
+        # Strip any stray bracket-style emotion tags e.g. [laughs]
+        t = re.sub(r"\[[^\]]*\]", "", t)
+        # Collapse extra whitespace left behind by the removals above
+        t = re.sub(r"\s{2,}", " ", t).strip()
+        # Guarantee the line ends with a normal single terminator
+        if t and t[-1] not in ".?":
+            t += "."
+        return t
+
     # ── Generate audio per dialog line ───────────────────────────────────────
     clips: list  = []   # list of 1-D numpy float32 arrays
     sample_rate: int | None = None
+
+    # Fixed seed + low sampling temperature: each line is generated as an
+    # independent forward pass, so without this the voice's pitch/energy/pace
+    # can drift noticeably from line to line. Locking the seed and reducing
+    # randomness keeps the same speaker character consistent across the script.
+    TTS_SEED = 42
+    TTS_TEMPERATURE = 0.55
 
     for d in dialogs:
         line_num = d["line_number"]
         text     = d["text"]
         print(f"   Generating line {line_num}/{len(dialogs)}: {text[:60]}...")
 
-        # Sanitize text to prevent Qwen3-TTS from hallucinating non-speech sounds (like laughing)
-        # on non-standard Unicode symbols like em-dashes and horizontal ellipses.
-        clean_text = text.replace("—", ", ").replace("…", "... ").replace(" - ", ", ")
+        clean_text = sanitize_for_tts(text)
+
+        torch.manual_seed(TTS_SEED)
+        if torch.cuda.is_available():
+            torch.cuda.manual_seed_all(TTS_SEED)
 
         wavs, sr = tts_model.generate_custom_voice(
             text=clean_text,
             language=TTS_LANGUAGE,
             speaker=TTS_SPEAKER,
             instruct=TTS_INSTRUCT,
+            do_sample=True,
+            temperature=TTS_TEMPERATURE,
         )
-        
-        # Maximize volume / normalize clip to prevent it from being too quiet
+
         clip_wav = wavs[0]
-        max_val = np.max(np.abs(clip_wav))
-        if max_val > 0:
-            clip_wav = (clip_wav / max_val) * 0.95
-            
+
+        # ── Loudness fix ────────────────────────────────────────────────────
+        # Peak-normalizing alone can still sound quiet if the clip's average
+        # (RMS) level is low relative to its peak. Bring RMS up to a target
+        # level first, THEN clamp peaks so nothing clips.
+        target_rms = 0.15
+        rms = np.sqrt(np.mean(clip_wav ** 2)) if clip_wav.size else 0.0
+        if rms > 0:
+            clip_wav = clip_wav * (target_rms / rms)
+        peak = np.max(np.abs(clip_wav))
+        if peak > 0.98:
+            clip_wav = clip_wav * (0.98 / peak)
+
         clips.append(clip_wav)
         if sample_rate is None:
             sample_rate = sr
@@ -259,9 +307,10 @@ def generate_tts(state: WhatIfState) -> dict:
         [arr for clip in clips for arr in (clip, silence)]
     )
 
-    # Normalize final merged track to peak at 0.98 for maximum clarity and volume
+    # Final safety clamp on the merged track (RMS already normalized per-clip
+    # above, so this just prevents any residual peak from clipping).
     max_val_merged = np.max(np.abs(merged))
-    if max_val_merged > 0:
+    if max_val_merged > 0.98:
         merged = (merged / max_val_merged) * 0.98
 
     # Store raw data in script dict so save_output can write the files
@@ -276,7 +325,71 @@ def generate_tts(state: WhatIfState) -> dict:
     return {"script": script}
 
 
-# ── Node 6: Save Output ───────────────────────────────────────────────────────
+# ── Node 6: Generate Images (Flux API) ───────────────────────────────────────
+
+def generate_images(state: WhatIfState) -> dict:
+    """
+    Call the self-hosted Flux Cloudflare Worker for each dialog line's flux_prompt
+    and cache the raw JPEG bytes in state["script"]["_images"].
+
+    Behaviour:
+    - Skips gracefully when FLUX_ENABLED=false.
+    - Per-image errors are logged as warnings; the pipeline continues.
+    - Raw bytes are stored temporarily in script["_images"] as a list of
+      {"line_number": int, "data": bytes} dicts; save_output writes them to disk.
+    - Uses a 90-second timeout per request (Flux can be slow on cold start).
+    """
+    if not FLUX_ENABLED:
+        print("\n⏭️  FLUX_ENABLED=false — skipping image generation.")
+        return {}
+
+    try:
+        import requests
+    except ImportError:
+        print(
+            "\n⚠️  'requests' package not found. "
+            "Run: pip install requests\nSkipping image generation."
+        )
+        return {}
+
+    dialogs: list[dict] = state["script"]["dialogs"]
+    total = len(dialogs)
+    print(f"\n🖼️  Generating {total} images via Flux API...")
+
+    headers = {
+        "Authorization": f"Bearer {FLUX_API_TOKEN}",
+        "Content-Type":  "application/json",
+    }
+
+    images: list[dict] = []  # [{"line_number": int, "data": bytes}, ...]
+
+    for d in dialogs:
+        line_num   = d["line_number"]
+        flux_prompt = d["flux_prompt"]
+        print(f"   Image {line_num}/{total}: {flux_prompt[:70]}...")
+
+        try:
+            response = requests.post(
+                FLUX_API_URL,
+                headers=headers,
+                json={"prompt": flux_prompt},
+                timeout=90,
+            )
+            response.raise_for_status()
+            images.append({"line_number": line_num, "data": response.content})
+            print(f"   ✅ Image {line_num} received ({len(response.content):,} bytes)")
+        except Exception as exc:
+            print(f"   ⚠️  Image {line_num} failed: {exc} — skipping this frame.")
+
+    print(f"\n   🖼️  Done — {len(images)}/{total} images generated.")
+
+    # Store raw bytes in script dict (save_output will write them to disk)
+    script = dict(state["script"])
+    script["_images"] = images
+    return {"script": script}
+
+
+# ── Node 7: Save Output ───────────────────────────────────────────────────────
 
 def save_output(state: WhatIfState) -> dict:
     """
@@ -355,6 +468,23 @@ def save_output(state: WhatIfState) -> dict:
         except Exception as exc:
             print(f"\n⚠️  Could not write audio files: {exc}")
 
+    # ── 5b. Write image files (if generate_images ran successfully) ───────────
+    image_blobs = script.get("_images", [])
+    saved_image_paths: list[str] = []
+    if image_blobs:
+        for img in image_blobs:
+            line_num   = img["line_number"]
+            raw_bytes  = img["data"]
+            img_path   = folder / f"image_{line_num:02d}.jpg"
+            try:
+                img_path.write_bytes(raw_bytes)
+                saved_image_paths.append(str(img_path))
+            except Exception as exc:
+                print(f"\n⚠️  Could not write image {line_num}: {exc}")
+        print(f"\n🖼️  {len(saved_image_paths)} images saved → {folder}")
+        # Remove raw image blob before saving data.json (binary, not JSON-safe)
+        script = {k: v for k, v in script.items() if k != "_images"}
+
     # ── 6. Write data.json (full structured output) ───────────────────────────
     data = {
         "run_id": run_id,
@@ -362,6 +492,7 @@ def save_output(state: WhatIfState) -> dict:
         "selection_reason": state.get("selection_reason", ""),
         "script": script,
         "audio_path": audio_path,
+        "image_paths": saved_image_paths if saved_image_paths else None,
         "generated_at": datetime.now(timezone.utc).isoformat(),
     }
     (folder / "data.json").write_text(
@@ -371,4 +502,5 @@ def save_output(state: WhatIfState) -> dict:
     return {
         "output_path":    str(folder),
         "tts_audio_path": audio_path,
+        "image_paths":    saved_image_paths if saved_image_paths else None,
     }

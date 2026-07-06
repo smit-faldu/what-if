@@ -53,11 +53,22 @@ TTS_INSTRUCT: str = os.getenv(
     "TTS_INSTRUCT",
     (
         "A charismatic, highly engaging male voice in his early thirties, "
-        "with a medium-low pitch and a fast, dynamic, and upbeat speaking rate. "
-        "The delivery is extremely confident and intellectually authoritative, "
-        "yet completely grounded by a natural curiosity and sharp, witty humor. "
-        "He uses natural conversational pauses and expressive intonation to keep "
-        "the listener hooked, making complex topics sound incredibly fun. "
-        "Maintain a completely clean speaking voice: do not chuckle, laugh, sigh, or make any non-verbal noises."
+        "with a medium-low pitch. Speak quickly and briskly, noticeably faster "
+        "than a normal conversational pace, with minimal gaps between words. "
+        "The delivery is confident and intellectually authoritative, energetic and upbeat. "
+        "Keep the exact same pitch, energy, volume, and speaking rate from the very first "
+        "word to the very last word — do not slow down, speed up, soften, or get quieter "
+        "at any point, and do not treat any part of the line as calmer or more dramatic "
+        "than the rest. "
+        "Speak at a strong, clearly audible volume throughout. "
+        "Maintain a completely clean, plain speaking voice: do not chuckle, laugh, gasp, "
+        "sigh, whisper, or make any non-verbal noises of any kind."
     ),
 )
+
+# ── Flux Image API ────────────────────────────────────────────────────────────
+# Self-hosted Cloudflare Worker wrapping flux-2-klein-4b.
+# Set FLUX_ENABLED=false to skip image generation (prompts are still saved).
+FLUX_API_URL:   str  = os.getenv("FLUX_API_URL")
+FLUX_API_TOKEN: str  = os.environ["FLUX_API_TOKEN"]   # required — add to .env
+FLUX_ENABLED:   bool = os.getenv("FLUX_ENABLED",   "true").lower() == "true"

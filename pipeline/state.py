@@ -114,3 +114,5 @@ class WhatIfState(TypedDict):
     script: Optional[dict]               # VideoScript.model_dump() — includes dialogs[]
     output_path: Optional[str]           # path to the saved output folder
     tts_audio_path: Optional[str]        # path to the merged TTS audio (.wav)
+    image_paths: Optional[list[str]]     # paths to generated images (one per dialog line)
+

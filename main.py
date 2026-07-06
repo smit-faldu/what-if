@@ -120,6 +120,7 @@ def print_dialogs(state: dict) -> None:
 
 def print_summary(state: dict, run_id: str) -> None:
     output_path = state.get("output_path", "")
+    image_paths = state.get("image_paths") or []
     console.print()
     console.print(
         Panel(
@@ -129,6 +130,7 @@ def print_summary(state: dict, run_id: str) -> None:
             f"[dim]Files saved:\n"
             f"  • dialogs.md       ← script + image prompts per line\n"
             f"  • tts_lines.txt    ← clean text for TTS (one line per clip)\n"
+            f"  • image_XX.jpg     ← {len(image_paths)} Flux-generated images\n"
             f"  • data.json        ← full structured output[/dim]",
             border_style="green",
             padding=(1, 2),
@@ -155,6 +157,7 @@ def main() -> None:
         "selection_reason": "",
         "script": None,
         "output_path": None,
+        "image_paths": None,
     }
 
     config = {"configurable": {"thread_id": run_id}}

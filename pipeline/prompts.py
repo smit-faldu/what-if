@@ -142,15 +142,19 @@ TEXT RULES:
 - Each line: 10-20 words max
 - Conversational tone — like Vsauce meets TikTok
 - Every line must make complete sense read alone (for TTS chunking)
-- NEVER use bracket-style emotion tags like [chuckles], [laughs], [sighs] — Qwen3-TTS ignores them
+- Write in PLAIN, CLEAN prose. Use only standard periods, commas, and single question marks.
+- Every line should sound like it's spoken in the exact same steady, confident tone as every
+  other line — no line should read as more excited, hushed, or dramatic than another.
 
-EXPRESSIVE TTS SYMBOLS (use these to create emotion and rhythm):
-- Em-dash  —   for dramatic mid-sentence pauses: "And then it just… stops — completely."
-- Ellipsis …   for trailing suspense or trailing thought: "But here's the thing…"
-- Natural hesitation words: "so—", "but wait—", "heh", "huh", "honestly?" — use sparingly, 1-2 per script
-- Emphasis through sentence structure: short punchy sentence AFTER a longer build-up
-- Rhetorical questions mid-script: "Right? Like — who even decided that was okay?"
-- DO NOT add filler "um" or "uh" — use "—" or "…" instead for a cleaner pause
+STRICTLY FORBIDDEN (these cause Qwen3-TTS to hallucinate laughing, gasping, or erratic
+tone/pace changes — do not use ANY of the following, anywhere, for any reason):
+- Bracket-style emotion tags: [chuckles], [laughs], [sighs], [pause], etc.
+- Em-dashes (—), en-dashes (–), or ellipses (…) of any kind
+- Hesitation/filler words or interjections: "um", "uh", "heh", "huh", "honestly?", "so—", "but wait—"
+- Stacked punctuation: "?!", "!!", "..."
+- Rhetorical asides or trailing/unfinished thoughts
+- Emphasis through italics, all-caps words, or unusual sentence fragments
+Every sentence must be a complete, grammatically normal sentence ending in a single "." or "?".
 
 IMAGE PROMPT RULES:
 - Every flux_prompt MUST start with this exact prefix:
@@ -175,4 +179,6 @@ Remember:
 - Lines 3-7/8: BODY (ripple effects, mix funny + real)
 - Last 1-2: CLOSER (biggest reveal + CTA)
 - Every line: 10-20 words, TTS-ready
+- Plain sentences only — no em-dashes, ellipses, hesitation words, or stacked punctuation
+- Keep every line in the same steady, consistent tone (no line more "dramatic" than another)
 - Every image: Pixar/Disney style, directly illustrates that line"""
