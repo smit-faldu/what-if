@@ -378,22 +378,39 @@ def generate_images(state: WhatIfState) -> dict:
     for d in dialogs:
         line_num    = d["line_number"]
         flux_prompt = d["flux_prompt"]
-        url         = next(_flux_url_cycle)
-        worker_idx  = FLUX_API_URLS.index(url) + 1
-        print(f"   Image {line_num}/{total} → worker {worker_idx}: {flux_prompt[:60]}...")
 
-        try:
-            response = requests.post(
-                url,
-                headers=headers,
-                json={"prompt": flux_prompt},
-                timeout=90,
-            )
-            response.raise_for_status()
-            images.append({"line_number": line_num, "data": response.content})
-            print(f"   ✅ Image {line_num} received ({len(response.content):,} bytes)")
-        except Exception as exc:
-            print(f"   ⚠️  Image {line_num} failed: {exc} — skipping this frame.")
+        # Build a prioritised list of URLs to try for this image.
+        # Start with the next URL from the round-robin cycle, then append
+        # every other configured URL so we exhaust all possibilities.
+        first_url   = next(_flux_url_cycle)
+        first_idx   = FLUX_API_URLS.index(first_url)
+        urls_to_try = FLUX_API_URLS[first_idx:] + FLUX_API_URLS[:first_idx]
+
+        success = False
+        for attempt, url in enumerate(urls_to_try, start=1):
+            worker_idx = FLUX_API_URLS.index(url) + 1
+            if attempt == 1:
+                print(f"   Image {line_num}/{total} → worker {worker_idx}: {flux_prompt[:60]}...")
+            else:
+                print(f"   Image {line_num}/{total} → fallback worker {worker_idx} (attempt {attempt}/{len(urls_to_try)})...")
+
+            try:
+                response = requests.post(
+                    url,
+                    headers=headers,
+                    json={"prompt": flux_prompt},
+                    timeout=90,
+                )
+                response.raise_for_status()
+                images.append({"line_number": line_num, "data": response.content})
+                print(f"   ✅ Image {line_num} received ({len(response.content):,} bytes) from worker {worker_idx}")
+                success = True
+                break
+            except Exception as exc:
+                print(f"   ⚠️  Worker {worker_idx} failed for image {line_num}: {exc}")
+
+        if not success:
+            print(f"   ❌ Image {line_num} failed on all {len(urls_to_try)} worker(s) — skipping this frame.")
 
     print(f"\n   🖼️  Done — {len(images)}/{total} images generated.")
 
