@@ -67,11 +67,22 @@ TTS_INSTRUCT: str = os.getenv(
 )
 
 # ── Flux Image API ────────────────────────────────────────────────────────────
-# Self-hosted Cloudflare Worker wrapping flux-2-klein-4b.
+# Self-hosted Cloudflare Workers wrapping flux-2-klein-4b.
+# FLUX_API_URLS — comma-separated list of worker endpoints.
+#   Requests are distributed round-robin across all URLs.
+#   To add more workers, just append another URL to the list.
 # Set FLUX_ENABLED=false to skip image generation (prompts are still saved).
-FLUX_API_URL:   str  = os.getenv("FLUX_API_URL")
+_raw_urls: str = os.getenv(
+    "FLUX_API_URLS",
+    os.getenv("FLUX_API_URL", ""),   # backwards-compat fallback
+)
+FLUX_API_URLS: list[str] = [
+    u.strip().rstrip("/")
+    for u in _raw_urls.split(",")
+    if u.strip()
+]
 FLUX_API_TOKEN: str  = os.environ["FLUX_API_TOKEN"]   # required — add to .env
-FLUX_ENABLED:   bool = os.getenv("FLUX_ENABLED",   "true").lower() == "true"
+FLUX_ENABLED:   bool = os.getenv("FLUX_ENABLED", "true").lower() == "true"
 
 # ── OpenAI Whisper (subtitle generation) ──────────────────────────────────────
 # Model sizes (accuracy ↑ / speed ↓): tiny < base < small < medium < large-v3

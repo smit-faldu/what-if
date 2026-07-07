@@ -10,6 +10,7 @@ Note: script writing and image prompt generation are merged into
 """
 
 from __future__ import annotations
+import itertools
 import json
 import re
 from datetime import datetime, timezone
@@ -21,7 +22,7 @@ from langchain_core.messages import SystemMessage, HumanMessage
 from config import (
     GEMINI_API_KEY, GEMINI_MODEL, OUTPUT_DIR,
     TTS_ENABLED, TTS_MODEL, TTS_SPEAKER, TTS_LANGUAGE, TTS_INSTRUCT,
-    FLUX_API_URL, FLUX_API_TOKEN, FLUX_ENABLED,
+    FLUX_API_URLS, FLUX_API_TOKEN, FLUX_ENABLED,
     WHISPER_MODEL, WHISPER_ENABLED,
 )
 from pipeline.state import (
@@ -37,6 +38,11 @@ from pipeline.prompts import (
     FLUX_STYLE_PREFIX,
 )
 from pipeline.vector_memory import IdeaVectorMemory
+
+# Round-robin iterator over all configured Flux worker URLs.
+# Cycles indefinitely so each image request goes to the next URL in sequence.
+_flux_url_cycle = itertools.cycle(FLUX_API_URLS) if FLUX_API_URLS else None
+
 
 
 # ── Shared LLM factory ────────────────────────────────────────────────────────
@@ -330,11 +336,12 @@ def generate_tts(state: WhatIfState) -> dict:
 
 def generate_images(state: WhatIfState) -> dict:
     """
-    Call the self-hosted Flux Cloudflare Worker for each dialog line's flux_prompt
+    Call the self-hosted Flux Cloudflare Workers for each dialog line's flux_prompt
     and cache the raw JPEG bytes in state["script"]["_images"].
 
     Behaviour:
-    - Skips gracefully when FLUX_ENABLED=false.
+    - Skips gracefully when FLUX_ENABLED=false or FLUX_API_URLS is empty.
+    - Requests are distributed round-robin across all URLs in FLUX_API_URLS.
     - Per-image errors are logged as warnings; the pipeline continues.
     - Raw bytes are stored temporarily in script["_images"] as a list of
       {"line_number": int, "data": bytes} dicts; save_output writes them to disk.
@@ -342,6 +349,10 @@ def generate_images(state: WhatIfState) -> dict:
     """
     if not FLUX_ENABLED:
         print("\n⏭️  FLUX_ENABLED=false — skipping image generation.")
+        return {}
+
+    if not FLUX_API_URLS or _flux_url_cycle is None:
+        print("\n⚠️  No FLUX_API_URLS configured — skipping image generation.")
         return {}
 
     try:
@@ -355,7 +366,7 @@ def generate_images(state: WhatIfState) -> dict:
 
     dialogs: list[dict] = state["script"]["dialogs"]
     total = len(dialogs)
-    print(f"\n🖼️  Generating {total} images via Flux API...")
+    print(f"\n🖼️  Generating {total} images via Flux API ({len(FLUX_API_URLS)} worker(s), round-robin)...")
 
     headers = {
         "Authorization": f"Bearer {FLUX_API_TOKEN}",
@@ -365,13 +376,15 @@ def generate_images(state: WhatIfState) -> dict:
     images: list[dict] = []  # [{"line_number": int, "data": bytes}, ...]
 
     for d in dialogs:
-        line_num   = d["line_number"]
+        line_num    = d["line_number"]
         flux_prompt = d["flux_prompt"]
-        print(f"   Image {line_num}/{total}: {flux_prompt[:70]}...")
+        url         = next(_flux_url_cycle)
+        worker_idx  = FLUX_API_URLS.index(url) + 1
+        print(f"   Image {line_num}/{total} → worker {worker_idx}: {flux_prompt[:60]}...")
 
         try:
             response = requests.post(
-                FLUX_API_URL,
+                url,
                 headers=headers,
                 json={"prompt": flux_prompt},
                 timeout=90,
