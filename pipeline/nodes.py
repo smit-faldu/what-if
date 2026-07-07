@@ -516,29 +516,32 @@ def _build_subtitle_state(whisper_result: dict, state: WhatIfState) -> dict:
     json_segments: list[dict] = []
 
     for i, seg in enumerate(segments, start=1):
-        start = _fmt_time(seg["start"])
-        end   = _fmt_time(seg["end"])
+        start = _fmt_time(float(seg["start"]))
+        end   = _fmt_time(float(seg["end"]))
         text  = seg["text"].strip()
 
         srt_blocks.append(f"{i}\n{start} --> {end}\n{text}\n")
 
-        # Structured segment with optional word-level detail
+        # Structured segment with optional word-level detail.
+        # Cast to plain Python float/int — Whisper returns numpy.float64 which
+        # LangGraph's msgpack checkpointer cannot serialize.
         seg_data: dict = {
-            "index":  i,
-            "start":  round(seg["start"], 3),
-            "end":    round(seg["end"],   3),
+            "index":  int(i),
+            "start":  round(float(seg["start"]), 3),
+            "end":    round(float(seg["end"]),   3),
             "text":   text,
         }
         if "words" in seg:
             seg_data["words"] = [
                 {
                     "word":  w.get("word", "").strip(),
-                    "start": round(w.get("start", seg["start"]), 3),
-                    "end":   round(w.get("end",   seg["end"]),   3),
+                    "start": round(float(w.get("start", seg["start"])), 3),
+                    "end":   round(float(w.get("end",   seg["end"])),   3),
                 }
                 for w in seg["words"]
             ]
         json_segments.append(seg_data)
+
 
     srt_content = "\n".join(srt_blocks)
     json_content = {
